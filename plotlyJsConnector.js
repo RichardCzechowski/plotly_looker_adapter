@@ -1,10 +1,8 @@
 (function() {
 
-  // var plotTemplate = `
-    // <lk-vis-select-option property="value_labels" label="Value Labels"></lk-vis-select-option>
-    // <lk-vis-select-option property="label_type" label="Label Type" ng-if="options.value_labels == 'labels'"></lk-vis-select-option>
-    // <lk-vis-number-option property="inner_radius" label="Inner Radius"></lk-vis-number-option>
-    // `
+  var valueTemplate = `
+    <lk-value-labels-option property="show_value_labels" label="Value Labels" default=false></lk-value-labels-option>
+    `
 
   var seriesTemplate = `
   <lk-flexible-series-editor-series
@@ -16,7 +14,7 @@
   looker.plugins.visualizations.registerEditorTemplates({
     for: "plotlyJs",
     templates: [
-      // {id: "plot", name: "Plot", template: plotTemplate},
+      {id: "values", name: "Values", template: valueTemplate},
       {id: "series", name: "Series", template: seriesTemplate}
     ]
   })
@@ -25,21 +23,17 @@
   var viz = {
     id: 'plotlyJs',
     label: 'PotlyJs',
-    options: {
-      // type: {
-      //   default: "lines",
-      //   values: [{"Line": "lines"}, {"Line with Points": "lines+markers"}, {"Scatter": "markers"}]
-      // },
-      // value_labels: {
-      //   default: false
-      //   type:
-      // }
-    },
+    options: {},
 
     create: function(element, settings) {
       this.id = _.uniqueId("plotly-");
       $elem = d3.select(element).append("div");
       $elem.attr("id", this.id);
+    },
+    destroy: function(){
+      $elem = d3.select("#" + this.id)
+      console.log($elem)
+      $elem.remove();
     },
 
     update: function(data, element, settings, resp) {
@@ -69,7 +63,8 @@
           },
           yaxis: {
             title: axisTitle(measure)
-          }
+          },
+          showlegend: false
         }
       }
 
@@ -132,16 +127,27 @@
         }
 
         var traceMode = function() {
-          type = settings.series_types[seriesKey]
+          var type = settings.series_types[seriesKey]
+          var mode = ""
           switch (type) {
             case "area":
-              return "lines";
+              mode += "lines";
+              break;
             case "line":
-              return "lines";
+              mode += "lines";
+              break;
             case "scatter":
-              return "markers";
+              mode += "markers";
+              break;
             default:
-              return undefined;
+              break;
+          }
+
+          if (settings.show_value_labels) {
+            return mode += "+text";
+          }
+          else{
+            return mode;
           }
         }
 
@@ -152,6 +158,7 @@
           type: traceType(),
           fill: traceFillType(),
           mode: traceMode(),
+          text: [],
           marker: {
             color: settings.series_colors[seriesKey],
             size: traceMarkerSize()
@@ -180,8 +187,11 @@
             trace.x.push(getDimVal(d))
           }
         })
+        // Text needs to be assigned after the x/y
+        // Eventually maybe we will get fancy here :()
+        trace.text = trace.y;
+
         layout = createLayoutForTrace(dimension, measure)
-        console.log(seriesKey, settings, trace)
         return trace
       }
 
@@ -200,8 +210,9 @@
         })
       }
 
+      console.log(chart, layout)
       Plotly.newPlot( elem, chart.plotData, layout);
-        }
+    }
   };
   looker.plugins.visualizations.add(viz);
 
