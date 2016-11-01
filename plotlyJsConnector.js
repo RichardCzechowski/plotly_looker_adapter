@@ -59,8 +59,12 @@
       elem.style.width = "100%";
       elem.style.height = element.clientHeight + "px";
 
-      chart.plotData = []
-      chart.layout = {}
+      chart.plotData = [];
+      chart.layout = {};
+
+      // Layout Data
+      chart.currentRow = 1;
+      chart.currentCol = 1;
 
       var createLayoutForTrace = function (dimension, measure, index) {
 
@@ -71,34 +75,60 @@
             return field.field_group_label || field.field_group_variant;
         }
 
+        if(resp.pivots && settings.small_multiples){
+          pivotLength = resp.pivots.length;
+          numberOfCols = Math.ceil(Math.sqrt(pivotLength))
+          numberOfRows = Math.round(Math.sqrt(pivotLength))
+          cellWidth = 1 / numberOfCols
+          cellHeight = 1 / numberOfRows
+          xMargin = .05
+          yMargin = .2
+        }
+
         var xDomain = function(){
           var a = b = null;
-          pivotLength = resp.pivots.length;
 
-          a = (index - 1) / pivotLength;
-          b = (index) / pivotLength - .05;
+          if(chart.currentCol > numberOfCols){
+            chart.currentRow += 1
+            chart.currentCol = 1
+          }
+
+          a = (chart.currentCol - 1) / numberOfCols;
+          b = a + cellWidth - xMargin;
+          chart.currentCol += 1
+
+          return [a, b];
+        }
+
+        var yDomain = function(){
+          var a = b = null;
+
+          a = (chart.currentRow - 1) / numberOfRows;
+          b = a + cellHeight - yMargin;
 
           return [a, b];
         }
 
         chart.layout.margin = {t: 0}
-        if(index !== undefined && index !== 1){
-          console.log(index)
+        if(index !== undefined && index !== 1 && settings.small_multiples){
           chart.layout["xaxis" + index] = {
             title: axisTitle(dimension),
+            anchor: "y" + index,
             domain: xDomain()
           }
           chart.layout["yaxis" + index] = {
             title: axisTitle(measure),
-            anchor: "x" + index
+            anchor: "x" + index,
+            domain: yDomain()
           }
-        } else if (index === 1) {
+        } else if (index === 1 && settings.small_multiples) {
           chart.layout.xaxis = {
             title: axisTitle(dimension),
             domain: xDomain()
           }
           chart.layout.yaxis = {
-            title: axisTitle(measure)
+            title: axisTitle(measure),
+            domain: yDomain()
           }
         } else {
           chart.layout.xaxis = {
@@ -240,10 +270,6 @@
           trace.xaxis = "x" + index
           trace.yaxis = "y" + index
         }
-        else {
-          trace.xaxis = "x"
-          trace.yaxis = "y"
-        }
 
         createLayoutForTrace(dimension, measure, index)
         return trace
@@ -267,7 +293,6 @@
       }
 
       Plotly.newPlot( elem, chart.plotData, chart.layout);
-      console.log(elem.data, elem.layout)
     }
   };
   looker.plugins.visualizations.add(viz);
