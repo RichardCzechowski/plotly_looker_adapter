@@ -1,7 +1,14 @@
+// Todo: Small multiples on pivots instead of stacked
+// Multiple y axes
+// Toggle or checkbox for stacking charts
+// Allow choice of yAxis
+// build a true scatter plot? With multiple measures for multi-dimensional charts
+
 (function() {
 
   var valueTemplate = `
-    <lk-value-labels-option property="show_value_labels" label="Value Labels" default=false></lk-value-labels-option>
+    <lk-vis-on-off-option property="show_value_labels" label="Value Labels"></lk-vis-on-off-option>
+    <lk-vis-on-off-option property="small_multiples" label="Small Multiples"></lk-vis-on-off-option>
     `
 
   var seriesTemplate = `
@@ -23,7 +30,16 @@
   var viz = {
     id: 'plotlyJs',
     label: 'PotlyJs',
-    options: {},
+    options: {
+      show_value_labels: {
+        type: "boolean",
+        default: false
+      },
+      small_multiples: {
+        type: "boolean",
+        default: false
+      }
+    },
 
     create: function(element, settings) {
       this.id = _.uniqueId("plotly-");
@@ -31,9 +47,8 @@
       $elem.attr("id", this.id);
     },
     destroy: function(){
-      $elem = d3.select("#" + this.id)
-      console.log($elem)
-      $elem.remove();
+      elem = document.getElementById(this.id);
+      Plotly.purge(elem)
     },
 
     update: function(data, element, settings, resp) {
@@ -45,9 +60,9 @@
       elem.style.height = element.clientHeight + "px";
 
       chart.plotData = []
-      layout = {}
+      chart.layout = {}
 
-      var createLayoutForTrace = function (dimension, measure) {
+      var createLayoutForTrace = function (dimension, measure, index) {
 
         var axisTitle = function (field){
           if (settings.show_view_names)
@@ -56,19 +71,47 @@
             return field.field_group_label || field.field_group_variant;
         }
 
-        return {
-          margin: { t: 0 },
-          xaxis: {
-            title: axisTitle(dimension)
-          },
-          yaxis: {
+        var xDomain = function(){
+          var a = b = null;
+          pivotLength = resp.pivots.length;
+
+          a = (index - 1) / pivotLength;
+          b = (index) / pivotLength - .05;
+
+          return [a, b];
+        }
+
+        chart.layout.margin = {t: 0}
+        if(index !== undefined && index !== 1){
+          console.log(index)
+          chart.layout["xaxis" + index] = {
+            title: axisTitle(dimension),
+            domain: xDomain()
+          }
+          chart.layout["yaxis" + index] = {
+            title: axisTitle(measure),
+            anchor: "x" + index
+          }
+        } else if (index === 1) {
+          chart.layout.xaxis = {
+            title: axisTitle(dimension),
+            domain: xDomain()
+          }
+          chart.layout.yaxis = {
             title: axisTitle(measure)
-          },
-          showlegend: false
+          }
+        } else {
+          chart.layout.xaxis = {
+            title: axisTitle(dimension),
+          }
+          chart.layout.yaxis = {
+            title: axisTitle(measure)
+          }
+
         }
       }
 
-      var createTrace = function(measure, pivot) {
+      var createTrace = function(measure, pivot, index) {
         var measureKey = seriesKey = measure.name;
         var dimension = resp.fields.dimension_like[0];
         var dimensionKey = dimension.name;
@@ -154,17 +197,17 @@
         var trace = {
           y: [],
           x: [],
-          name: settings.series_labels[seriesKey] || (pivot && pivot.label) || measure.label,
+          name: (settings.series_labels && settings.series_labels[seriesKey]) || (pivot && pivot.label) || measure.label,
           type: traceType(),
           fill: traceFillType(),
           mode: traceMode(),
           text: [],
           marker: {
-            color: settings.series_colors[seriesKey],
+            color: settings.series_colors && settings.series_colors[seriesKey],
             size: traceMarkerSize()
           },
           line: {
-            color: settings.series_colors[seriesKey],
+            color: settings.series_colors && settings.series_colors[seriesKey],
             width: traceLineSize()
           }
         }
@@ -172,7 +215,7 @@
         getDimVal = function(d){
           var dimVal = ""
           resp.fields.dimension_like.forEach(function(dim){
-            dimVal += d[dim.name].value + " ";
+            dimVal += d[dim.name].value;
           })
           return dimVal
         }
@@ -189,18 +232,31 @@
         })
         // Text needs to be assigned after the x/y
         // Eventually maybe we will get fancy here :()
-        trace.text = trace.y;
+        if (settings.show_value_labels) {
+          trace.text = trace.y;
+        }
 
-        layout = createLayoutForTrace(dimension, measure)
+        if(index && index !== 1 && settings.small_multiples == true) {
+          trace.xaxis = "x" + index
+          trace.yaxis = "y" + index
+        }
+        else {
+          trace.xaxis = "x"
+          trace.yaxis = "y"
+        }
+
+        createLayoutForTrace(dimension, measure, index)
         return trace
       }
 
-      // Don't calculate x, y more than once, it's expensive
+      // In the future, maybe don't calculate x, y more than once, it's expensive
       // Hopefully that'll solve the dashboard resize sluggishness
       if(resp.fields.pivots.length > 0) {
+        var i = 1;
         resp.pivots.forEach(function(pivot){
           resp.fields.measure_like.forEach(function(measure){
-            chart.plotData.push(createTrace(measure, pivot))
+            chart.plotData.push(createTrace(measure, pivot, i))
+            i++
           })
         })
       }
@@ -210,8 +266,8 @@
         })
       }
 
-      console.log(chart, layout)
-      Plotly.newPlot( elem, chart.plotData, layout);
+      Plotly.newPlot( elem, chart.plotData, chart.layout);
+      console.log(elem.data, elem.layout)
     }
   };
   looker.plugins.visualizations.add(viz);
